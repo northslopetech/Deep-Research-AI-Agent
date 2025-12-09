@@ -35,6 +35,10 @@ yarn-error.log*
 .env.development
 .env.production
 .env
+.envrc
+
+# project-specific
+PLAN.md
 
 # vercel
 .vercel
