@@ -137,16 +137,21 @@ export async function webSearch(query: string): Promise<string> {
 /**
  * Ontology search via Palantir Foundry Ontology API
  * Searches across ontology objects and returns relevant results
+ *
+ * @param query - Search query text
+ * @param objectTypes - Optional array of object type API names to search (if provided, only these types are searched)
  */
-export async function ontologySearch(query: string): Promise<string> {
+export async function ontologySearch(query: string, objectTypes?: string[]): Promise<string> {
   try {
-    console.log(`[LIVE] Ontology search for: ${query}`);
+    const hasSpecificTypes = objectTypes && objectTypes.length > 0;
+    console.log(`[LIVE] Ontology search for: ${query}${hasSpecificTypes ? ` (types: ${objectTypes.join(', ')})` : ' (auto-discover)'}`);
 
-    // Call the Foundry Ontology API with auto-discover enabled
-    // This will automatically search across available object types
+    // Call the Foundry Ontology API
+    // If objectTypes are provided, search only those types; otherwise auto-discover
     const response = await searchOntologyObjects(query, {
       maxResults: 10,
-      autoDiscover: true, // Automatically discover and search object types
+      objectTypes: hasSpecificTypes ? objectTypes : undefined,
+      autoDiscover: !hasSpecificTypes, // Only auto-discover if no specific types provided
     });
 
     // Check if ontology search is configured

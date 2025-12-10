@@ -34,8 +34,12 @@ export async function POST(req: Request) {
 
     const topic = parsed.topic;
     const clarifications = parsed.clarifications || parsed.clerifications; // handle both spellings
+    const objectTypes = parsed.objectTypes as string[] | undefined; // Optional array of object type API names
 
     console.log("[deep-research] Starting research for topic:", topic);
+    if (objectTypes && objectTypes.length > 0) {
+      console.log("[deep-research] Filtering ontology search to object types:", objectTypes);
+    }
 
     // AI SDK v5: createDataStreamResponse -> createUIMessageStream + createUIMessageStreamResponse
     const stream = createUIMessageStream({
@@ -50,7 +54,8 @@ export async function POST(req: Request) {
             tokenUsed: 0,
             findings: [],
             processedUrl: new Set(),
-            clerificationsText: JSON.stringify(clarifications)
+            clerificationsText: JSON.stringify(clarifications),
+            objectTypes: objectTypes // Array of object type API names for ontology search
         }
 
         try {
