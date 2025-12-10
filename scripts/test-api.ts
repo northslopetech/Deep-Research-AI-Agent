@@ -84,6 +84,8 @@ async function testDeepResearch() {
     let fullResponse = '';
     let activityCount = 0;
     let reportReceived = false;
+    let finalReport = '';
+    const activities: Array<{ status: string; message: string }> = [];
 
     console.log('\n  📊 Streaming Activities:');
 
@@ -124,12 +126,12 @@ async function testDeepResearch() {
                   activityCount++;
                   const status = item.content?.status || 'unknown';
                   const message = item.content?.message || '';
+                  activities.push({ status, message });
                   const icon = status === 'complete' ? '✓' : status === 'pending' ? '○' : '!';
                   console.log(`    ${icon} ${message}`);
                 } else if (item.type === 'report') {
                   reportReceived = true;
-                  console.log('\n  📄 Report Preview (first 200 chars):');
-                  console.log(`    ${item.content?.substring(0, 200)}...`);
+                  finalReport = item.content || '';
                 }
               }
             }
@@ -138,12 +140,12 @@ async function testDeepResearch() {
               activityCount++;
               const status = data.content?.status || 'unknown';
               const message = data.content?.message || '';
+              activities.push({ status, message });
               const icon = status === 'complete' ? '✓' : status === 'pending' ? '○' : '!';
               console.log(`    ${icon} ${message}`);
             } else if (data.type === 'report') {
               reportReceived = true;
-              console.log('\n  📄 Report Preview (first 200 chars):');
-              console.log(`    ${data.content?.substring(0, 200)}...`);
+              finalReport = data.content || '';
             }
           }
         } catch {
@@ -152,21 +154,32 @@ async function testDeepResearch() {
       }
     }
 
-    console.log(`\n  Activities received: ${activityCount}`);
-    console.log(`  Report received: ${reportReceived}`);
-    console.log(`  Raw response length: ${fullResponse.length}`);
+    console.log(`\n  📊 Summary:`);
+    console.log(`    Activities: ${activityCount}`);
+    console.log(`    Report: ${reportReceived ? '✓ Received' : '✗ Not received'}`);
 
-    // Debug: show first part of raw response if no activities
-    if (activityCount === 0 && fullResponse.length > 0) {
-      console.log('\n  Debug - First 500 chars of response:');
-      console.log(`    ${fullResponse.substring(0, 500)}`);
+    // Show final report if received
+    if (finalReport) {
+      console.log('\n' + '═'.repeat(50));
+      console.log('📄 Final Research Report');
+      console.log('═'.repeat(50));
+      console.log(finalReport);
+      console.log('═'.repeat(50));
     }
 
-    if (activityCount > 0) {
+    if (activityCount > 0 && reportReceived) {
       console.log('\n  ✅ Deep Research: PASSED');
       return true;
+    } else if (activityCount > 0) {
+      console.log('\n  ⚠️  Deep Research: Partial (activities but no report)');
+      return false;
     } else {
-      console.log('\n  ⚠️  Deep Research: Partial (no activities parsed)');
+      console.log('\n  ❌ Deep Research: FAILED (no activities parsed)');
+      // Debug: show first part of raw response
+      if (fullResponse.length > 0) {
+        console.log('\n  Debug - First 500 chars of response:');
+        console.log(`    ${fullResponse.substring(0, 500)}`);
+      }
       return false;
     }
   } catch (error) {
