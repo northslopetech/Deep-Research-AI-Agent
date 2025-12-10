@@ -22,78 +22,29 @@ async function callFoundryFunction(
     throw new Error("FOUNDRY_TOKEN environment variable is required");
   }
 
-  // Construct the function endpoint URL
-  // Try different endpoint formats based on RID type
-  const functionName = process.env.FOUNDRY_FUNCTION_NAME || 'searchWebBatch';
-  const endpointsToTry: string[] = [];
-  
-  if (functionRid.startsWith('ri.third-party-applications')) {
-    // Application RID - try multiple endpoint formats for TypeScript functions
-    endpointsToTry.push(
-      `${url}/multipass/api/query/${functionRid}/${functionName}`,
-      `${url}/api/v1/applications/${functionRid}/functions/${functionName}/invoke`,
-      `${url}/api/v1/applications/${functionRid}/functions/invoke`,
-      `${url}/api/v2/ontologies/${process.env.FOUNDRY_ONTOLOGY_RID || 'ri.ontology.main.ontology.8ab32810-4c30-4343-b400-392685162049'}/queries/${functionName}/execute`
-    );
-  } else if (functionRid.startsWith('ri.function-registry')) {
-    // Function RID - try multiple endpoint formats
-    // For @Query functions, they might be exposed through ontology
-    const ontologyRid = process.env.FOUNDRY_ONTOLOGY_RID || 'ri.ontology.main.ontology.8ab32810-4c30-4343-b400-392685162049';
-    endpointsToTry.push(
-      `${url}/api/v1/functions/${functionRid}/invoke`,
-      `${url}/api/v2/ontologies/${ontologyRid}/queries/${functionName}/execute`,
-      `${url}/multipass/api/query/${functionRid}`,
-      `${url}/api/v1/functions/${functionRid}`
-    );
-  } else {
-    // Try standard function endpoint as fallback
-    endpointsToTry.push(`${url}/api/v1/functions/${functionRid}/invoke`);
+  // Function RIDs must be: ri.function-registry.main.function.XXXX
+  if (!functionRid.startsWith('ri.function-registry')) {
+    throw new Error(`Invalid function RID: ${functionRid}. Must start with 'ri.function-registry'`);
   }
 
-  // Try each endpoint until one works
-  let lastError: Error | null = null;
-  for (const functionUrl of endpointsToTry) {
-    try {
-      console.log(`[Foundry] Trying endpoint: ${functionUrl}`);
-      
-      // For ontology query endpoints, the body format might be different
-      let requestBody: string;
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      };
-      
-      if (functionUrl.includes('/queries/') && functionUrl.includes('/execute')) {
-        // Ontology query format: { parameters: { queries: [...] } }
-        requestBody = JSON.stringify({ parameters });
-      } else {
-        // Standard function format: { queries: [...] }
-        requestBody = JSON.stringify(parameters);
-      }
-      
-      const response = await fetch(functionUrl, {
-        method: "POST",
-        headers,
-        body: requestBody,
-      });
+  const functionUrl = `${url}/api/v1/functions/${functionRid}/invoke`;
+  console.log(`[Foundry] Calling: ${functionUrl}`);
 
-      if (response.ok) {
-        console.log(`[Foundry] ✅ Success with endpoint: ${functionUrl}`);
-        const result = await response.json();
-        return result;
-      } else {
-        const errorText = await response.text();
-        lastError = new Error(`HTTP ${response.status}: ${errorText}`);
-        console.log(`[Foundry] ❌ Failed (${response.status}): ${errorText.substring(0, 200)}`);
-      }
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      console.log(`[Foundry] ❌ Error: ${lastError.message}, trying next endpoint...`);
-    }
+  const response = await fetch(functionUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
+    body: JSON.stringify(parameters),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
   }
 
-  // If all endpoints failed, throw the last error
-  throw lastError || new Error('All endpoint attempts failed');
+  return response.json();
 }
 
 /**
