@@ -58,7 +58,7 @@ async function callFoundryFunction(
       
       // For ontology query endpoints, the body format might be different
       let requestBody: string;
-      let headers: Record<string, string> = {
+      const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
       };
@@ -131,19 +131,6 @@ async function webSearch(query: string): Promise<string> {
     const result = await callFoundryFunction(functionRid, { queries: [query] });
     
     // The function returns a JSON string, which may be wrapped in a "value" field for ontology queries
-    let parsedResult: {
-      success?: boolean;
-      totalQueries?: number;
-      searchResults?: Array<{
-        query: string;
-        success: boolean;
-        results: unknown[];
-        error: string | null;
-      }>;
-      error?: string;
-      details?: string;
-    };
-    
     // Handle ontology query response format (wrapped in "value" field)
     let resultString: string;
     if (typeof result === 'object' && result !== null && 'value' in result) {
@@ -155,7 +142,18 @@ async function webSearch(query: string): Promise<string> {
     }
     
     // Parse the JSON string
-    parsedResult = JSON.parse(resultString);
+    const parsedResult: {
+      success?: boolean;
+      totalQueries?: number;
+      searchResults?: Array<{
+        query: string;
+        success: boolean;
+        results: unknown[];
+        error: string | null;
+      }>;
+      error?: string;
+      details?: string;
+    } = JSON.parse(resultString);
     
     // Extract results from the first search result (since we only sent one query)
     if (parsedResult.searchResults && parsedResult.searchResults.length > 0) {
