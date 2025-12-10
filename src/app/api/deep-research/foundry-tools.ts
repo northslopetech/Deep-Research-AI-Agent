@@ -52,7 +52,7 @@ Ontology search is not configured. Set FOUNDRY_ONTOLOGY_RID environment variable
       query,
       totalCount: response.totalCount || 0,
       searchedTypes: response.searchedTypes || [],
-      results: response.data?.map((obj: any) => ({
+      results: response.data?.map((obj) => ({
         rid: obj.rid,
         properties: obj.properties,
       })) || [],

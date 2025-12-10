@@ -10,13 +10,45 @@ if (!FOUNDRY_TOKEN || !FOUNDRY_BASE_URL) {
   console.warn('Warning: FOUNDRY_TOKEN or FOUNDRY_BASE_URL not set. Foundry API calls will fail.');
 }
 
+// Type definitions for Foundry API responses
+interface FoundryOntologyObject {
+  rid: string;
+  properties: Record<string, unknown>;
+}
+
+interface FoundrySearchResponse {
+  data?: FoundryOntologyObject[];
+  totalCount?: number;
+  nextPageToken?: string;
+  searchedTypes?: string[];
+  message?: string;
+}
+
+interface FoundryObjectType {
+  apiName: string;
+}
+
+interface FoundryObjectTypesResponse {
+  data?: FoundryObjectType[];
+}
+
+interface FoundryPropertyDefinition {
+  baseType?: string;
+  type?: string;
+  dataType?: { type?: string };
+}
+
+interface FoundryObjectSchema {
+  properties?: Record<string, FoundryPropertyDefinition>;
+}
+
 /**
  * Generic function to call Foundry API endpoints
  */
 async function callFoundryAPI(
   endpoint: string,
   options: RequestInit = {}
-): Promise<any> {
+): Promise<unknown> {
   const url = `${FOUNDRY_BASE_URL}${endpoint}`;
 
   const response = await fetch(url, {
@@ -74,7 +106,7 @@ export async function searchOntologyObjects(
     maxResults?: number;
     autoDiscover?: boolean; // If true, search across multiple object types
   } = {}
-): Promise<any> {
+): Promise<FoundrySearchResponse> {
   const ontologyRid = options.ontologyRid || await getOntologyRid();
 
   // If no ontology RID is configured, return empty results gracefully
@@ -109,7 +141,7 @@ export async function searchOntologyObjects(
       return await callFoundryAPI(endpoint, {
         method: 'POST',
         body: JSON.stringify(requestBody),
-      });
+      }) as FoundrySearchResponse;
     }
 
     // If autoDiscover is enabled, search across multiple object types
@@ -167,7 +199,7 @@ export async function searchOntologyObjects(
 export async function getObjectTypeSchema(
   objectType: string,
   ontologyRid?: string
-): Promise<any> {
+): Promise<FoundryObjectSchema> {
   const rid = ontologyRid || await getOntologyRid();
 
   if (!rid) {
@@ -179,7 +211,7 @@ export async function getObjectTypeSchema(
   try {
     const response = await callFoundryAPI(endpoint, {
       method: 'GET',
-    });
+    }) as FoundryObjectSchema;
 
     return response;
   } catch (error) {
@@ -191,12 +223,12 @@ export async function getObjectTypeSchema(
 /**
  * Extract searchable text field names from an object type schema
  */
-function extractSearchableFields(schema: any): string[] {
+function extractSearchableFields(schema: FoundryObjectSchema): string[] {
   const searchableFields: string[] = [];
 
   if (schema.properties) {
     for (const [fieldName, fieldDef] of Object.entries(schema.properties)) {
-      const def = fieldDef as any;
+      const def = fieldDef as FoundryPropertyDefinition;
       // Check for string fields using the actual Foundry schema structure
       // baseType is the correct field in Foundry schemas
       if (def.baseType === 'String' || def.type === 'string' || def.dataType?.type === 'string') {
@@ -220,7 +252,7 @@ export async function queryOntologyByType(
     maxResults?: number;
     fields?: string[];
   } = {}
-): Promise<any> {
+): Promise<FoundrySearchResponse> {
   const ontologyRid = options.ontologyRid || await getOntologyRid();
 
   if (!ontologyRid) {
@@ -250,7 +282,7 @@ export async function queryOntologyByType(
           console.warn(`  No searchable string fields found for ${objectType}, skipping`);
           return { data: [], totalCount: 0 };
         }
-      } catch (schemaError) {
+      } catch {
         console.warn(`  Could not get schema for ${objectType}, skipping`);
         return { data: [], totalCount: 0 };
       }
@@ -286,7 +318,7 @@ export async function queryOntologyByType(
     const response = await callFoundryAPI(endpoint, {
       method: 'POST',
       body: JSON.stringify(requestBody),
-    });
+    }) as FoundrySearchResponse;
 
     return response;
   } catch (error) {
@@ -314,9 +346,9 @@ export async function listObjectTypes(
   try {
     const response = await callFoundryAPI(endpoint, {
       method: 'GET',
-    });
+    }) as FoundryObjectTypesResponse;
 
-    return response.data?.map((type: any) => type.apiName) || [];
+    return response.data?.map((type) => type.apiName) || [];
   } catch (error) {
     console.error('Error listing object types:', error);
     throw error;

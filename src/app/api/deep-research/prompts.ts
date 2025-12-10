@@ -45,7 +45,7 @@ Structured data from your organization's Foundry Ontology, formatted as JSON wit
    - If RIDs are present, mention them for traceability
 
 **Example Ontology Summary:**
-```markdown
+\`\`\`markdown
 ## Internal Data: Project Information
 
 Searched Types: T6Resource, KeyPeople
@@ -62,7 +62,7 @@ Searched Types: T6Resource, KeyPeople
 - Role: Senior Engineer
 - Department: R&D
 - Projects: Alpha, Beta
-```
+\`\`\`
 
 ## General Extraction Guidelines
 
