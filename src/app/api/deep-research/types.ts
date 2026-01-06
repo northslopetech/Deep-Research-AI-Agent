@@ -12,7 +12,8 @@ export interface ResearchState {
     tokenUsed: number,
     findings: ResearchFindings[],
     processedUrl: Set<string>,
-    clerificationsText: string
+    clerificationsText: string,
+    objectTypes?: string[] // Optional array of object type API names to search in Ontology
 }
 
 export interface ModelCallOptions<T>{

@@ -11,6 +11,13 @@ if (!isAuthConfigured() || !FOUNDRY_BASE_URL) {
   console.warn('Warning: Authentication or FOUNDRY_BASE_URL not configured. Foundry API calls will fail.');
 }
 
+// Cache for object types we don't have permission to access (persists for session)
+const deniedObjectTypes = new Set<string>();
+
+// Cache for object type schemas (to avoid repeated API calls)
+const schemaCache = new Map<string, { schema: FoundryObjectSchema; timestamp: number }>();
+const SCHEMA_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // Type definitions for Foundry API responses
 interface FoundryOntologyObject {
   rid: string;
@@ -92,6 +99,83 @@ export async function getOntologyRid(): Promise<string | null> {
 }
 
 /**
+ * Score how relevant an object type name is to a search query
+ * Returns a score from 0-100
+ */
+function scoreTypeRelevance(typeName: string, searchQuery: string): number {
+  const typeNameLower = typeName.toLowerCase();
+  const queryLower = searchQuery.toLowerCase();
+  const queryTerms = queryLower.split(/\s+/).filter(t => t.length > 2);
+
+  let score = 0;
+
+  // Exact match of type name in query
+  if (queryLower.includes(typeNameLower)) {
+    score += 50;
+  }
+
+  // Type name contains query terms
+  for (const term of queryTerms) {
+    if (typeNameLower.includes(term)) {
+      score += 20;
+    }
+  }
+
+  // Common relevant type patterns for different query types
+  const relevancePatterns: Record<string, string[]> = {
+    // People-related queries
+    'resume|candidate|hire|hiring|recruit|employee|person|people|staff|team':
+      ['person', 'people', 'employee', 'candidate', 'resume', 'resource', 'user', 'staff', 'team', 'member'],
+    // Project-related queries
+    'project|initiative|program|work|task':
+      ['project', 'task', 'initiative', 'program', 'work', 'ticket'],
+    // Document-related queries
+    'document|file|upload|attachment|report':
+      ['document', 'file', 'upload', 'attachment', 'report', 'note'],
+    // Customer-related queries
+    'customer|client|account|company|organization':
+      ['customer', 'client', 'account', 'company', 'organization', 'org'],
+  };
+
+  for (const [queryPattern, typePatterns] of Object.entries(relevancePatterns)) {
+    const queryRegex = new RegExp(queryPattern, 'i');
+    if (queryRegex.test(queryLower)) {
+      for (const pattern of typePatterns) {
+        if (typeNameLower.includes(pattern)) {
+          score += 30;
+          break;
+        }
+      }
+    }
+  }
+
+  // Penalize internal/system types
+  const systemPatterns = ['posthog', 'analytics', 'log', 'audit', 'system', 'config', 'setting'];
+  for (const pattern of systemPatterns) {
+    if (typeNameLower.includes(pattern)) {
+      score -= 20;
+    }
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+/**
+ * Rank object types by relevance to a search query
+ */
+function rankObjectTypesByRelevance(objectTypes: string[], searchQuery: string): string[] {
+  const scored = objectTypes.map(type => ({
+    type,
+    score: scoreTypeRelevance(type, searchQuery)
+  }));
+
+  // Sort by score descending
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored.map(s => s.type);
+}
+
+/**
  * Search objects in the Foundry Ontology
  * This is a simplified semantic search that queries across object types
  *
@@ -105,6 +189,7 @@ export async function searchOntologyObjects(
   options: {
     ontologyRid?: string;
     objectType?: string;
+    objectTypes?: string[]; // Array of object type API names to search (takes precedence over autoDiscover)
     maxResults?: number;
     autoDiscover?: boolean; // If true, search across multiple object types
   } = {}
@@ -123,11 +208,56 @@ export async function searchOntologyObjects(
 
   const {
     objectType,
+    objectTypes,
     maxResults = 10,
     autoDiscover = false,
   } = options;
 
   try {
+    // If an array of object types is provided, search those specific types in parallel
+    if (objectTypes && objectTypes.length > 0) {
+      console.log(`Searching ${objectTypes.length} specified object types: ${objectTypes.join(', ')}`);
+
+      // Filter out types we've already been denied access to
+      const accessibleTypes = objectTypes.filter(type => !deniedObjectTypes.has(type));
+
+      if (accessibleTypes.length === 0) {
+        console.warn('All specified object types have been denied access');
+        return { data: [], totalCount: 0, searchedTypes: objectTypes };
+      }
+
+      // Search specified types in parallel
+      const searchPromises = accessibleTypes.map(type =>
+        queryOntologyByType(type, searchQuery, { ontologyRid, maxResults: Math.ceil(maxResults / accessibleTypes.length) })
+          .catch(err => {
+            if (err.message && err.message.includes('PERMISSION_DENIED')) {
+              console.log(`  [DENIED] ${type} - caching for future requests`);
+              deniedObjectTypes.add(type);
+            } else {
+              console.warn(`  [ERROR] ${type}: ${err.message?.slice(0, 100)}`);
+            }
+            return { data: [], totalCount: 0, searchedType: type };
+          })
+      );
+
+      const results = await Promise.all(searchPromises);
+
+      // Combine results from all types
+      const allData = results.flatMap(r => r.data || []);
+      const totalCount = results.reduce((sum, r) => sum + (r.totalCount || 0), 0);
+      const successfulTypes = accessibleTypes.filter((type, i) =>
+        (results[i].data?.length || 0) > 0
+      );
+
+      console.log(`Found ${allData.length} total results from ${successfulTypes.length} types`);
+
+      return {
+        data: allData.slice(0, maxResults),
+        totalCount,
+        searchedTypes: successfulTypes.length > 0 ? successfulTypes : accessibleTypes,
+      };
+    }
+
     // If a specific object type is provided, search only that type
     if (objectType) {
       const endpoint = `/api/v1/ontologies/${ontologyRid}/objects/${objectType}/search`;
@@ -151,35 +281,71 @@ export async function searchOntologyObjects(
       console.log('Auto-discovering object types and searching...');
 
       // Get available object types
-      const objectTypes = await listObjectTypes(ontologyRid);
+      const allObjectTypes = await listObjectTypes(ontologyRid);
 
-      if (objectTypes.length === 0) {
+      if (allObjectTypes.length === 0) {
         console.warn('No object types found in ontology');
         return { data: [], totalCount: 0 };
       }
 
-      console.log(`Found ${objectTypes.length} object types, searching top 5...`);
+      // Filter out types we've already been denied access to
+      const accessibleTypes = allObjectTypes.filter(type => !deniedObjectTypes.has(type));
 
-      // Search across first 5 object types to avoid too many API calls
-      const typesToSearch = objectTypes.slice(0, 5);
-      const searchPromises = typesToSearch.map(type =>
-        queryOntologyByType(type, searchQuery, { ontologyRid, maxResults: 3 })
+      console.log(`Found ${allObjectTypes.length} object types (${deniedObjectTypes.size} denied), ${accessibleTypes.length} accessible`);
+
+      // Rank types by relevance to the search query
+      const rankedTypes = rankObjectTypesByRelevance(accessibleTypes, searchQuery);
+
+      // Log the ranking for debugging
+      const topRanked = rankedTypes.slice(0, 10).map(t => {
+        const score = scoreTypeRelevance(t, searchQuery);
+        return `${t}(${score})`;
+      });
+      console.log(`Top ranked types for "${searchQuery.slice(0, 50)}...": ${topRanked.join(', ')}`);
+
+      // Search ALL types with non-zero relevance score, or top 15 if many have scores
+      const typesToSearch = rankedTypes.filter(type => {
+        const score = scoreTypeRelevance(type, searchQuery);
+        return score > 0;
+      });
+
+      // If no types scored, fall back to top 10 types
+      const finalTypesToSearch = typesToSearch.length > 0
+        ? typesToSearch.slice(0, 15) // Cap at 15 to avoid too many parallel requests
+        : rankedTypes.slice(0, 10);
+
+      console.log(`Searching ${finalTypesToSearch.length} relevant types...`);
+
+      // Search in parallel with error handling
+      const searchPromises = finalTypesToSearch.map(type =>
+        queryOntologyByType(type, searchQuery, { ontologyRid, maxResults: 5 })
           .catch(err => {
-            console.warn(`Failed to search type ${type}:`, err.message);
-            return { data: [], totalCount: 0 };
+            // Check if it's a permission denied error
+            if (err.message && err.message.includes('PERMISSION_DENIED')) {
+              console.log(`  [DENIED] ${type} - caching for future requests`);
+              deniedObjectTypes.add(type);
+            } else {
+              console.warn(`  [ERROR] ${type}: ${err.message?.slice(0, 100)}`);
+            }
+            return { data: [], totalCount: 0, searchedType: type };
           })
       );
 
       const results = await Promise.all(searchPromises);
 
-      // Combine results from all types
+      // Combine results from all types, filtering out empty results
       const allData = results.flatMap(r => r.data || []);
       const totalCount = results.reduce((sum, r) => sum + (r.totalCount || 0), 0);
+      const successfulTypes = finalTypesToSearch.filter((type, i) =>
+        (results[i].data?.length || 0) > 0
+      );
+
+      console.log(`Found ${allData.length} total results from ${successfulTypes.length} types`);
 
       return {
         data: allData.slice(0, maxResults),
         totalCount,
-        searchedTypes: typesToSearch,
+        searchedTypes: successfulTypes.length > 0 ? successfulTypes : finalTypesToSearch,
       };
     }
 
@@ -197,6 +363,7 @@ export async function searchOntologyObjects(
 
 /**
  * Get the schema/properties for a specific object type
+ * Uses caching to avoid repeated API calls
  */
 export async function getObjectTypeSchema(
   objectType: string,
@@ -208,12 +375,22 @@ export async function getObjectTypeSchema(
     throw new Error('FOUNDRY_ONTOLOGY_RID not configured');
   }
 
+  // Check cache first
+  const cacheKey = `${rid}:${objectType}`;
+  const cached = schemaCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < SCHEMA_CACHE_TTL) {
+    return cached.schema;
+  }
+
   const endpoint = `/api/v1/ontologies/${rid}/objectTypes/${objectType}`;
 
   try {
     const response = await callFoundryAPI(endpoint, {
       method: 'GET',
     }) as FoundryObjectSchema;
+
+    // Cache the result
+    schemaCache.set(cacheKey, { schema: response, timestamp: Date.now() });
 
     return response;
   } catch (error) {

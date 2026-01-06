@@ -86,7 +86,8 @@ export async function search(
       title = "Web Results";
       url = "Firecrawl";
     } else {
-      content = await ontologySearch(query);
+      // Pass objectTypes from ResearchState to filter ontology search
+      content = await ontologySearch(query, researchState.objectTypes);
       title = "Ontology Results";
       url = "Foundry";
     }
@@ -232,7 +233,7 @@ export async function analyzeFindings(
 
 export async function generateReport(researchState: ResearchState, activityTracker: ActivityTracker) {
   try {
-    activityTracker.add("generate","pending",`Geneating comprehensive report!`);
+    activityTracker.add("generate","pending",`Generating comprehensive report!`);
 
     const contentText = combineFindings(researchState.findings);
 
