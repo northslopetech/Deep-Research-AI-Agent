@@ -3,11 +3,12 @@
  * Provides functions to interact with Palantir Foundry APIs
  */
 
-const FOUNDRY_TOKEN = process.env.FOUNDRY_TOKEN;
+import { getAuthToken, isAuthConfigured } from './foundry-auth';
+
 const FOUNDRY_BASE_URL = process.env.FOUNDRY_BASE_URL;
 
-if (!FOUNDRY_TOKEN || !FOUNDRY_BASE_URL) {
-  console.warn('Warning: FOUNDRY_TOKEN or FOUNDRY_BASE_URL not set. Foundry API calls will fail.');
+if (!isAuthConfigured() || !FOUNDRY_BASE_URL) {
+  console.warn('Warning: Authentication or FOUNDRY_BASE_URL not configured. Foundry API calls will fail.');
 }
 
 // Type definitions for Foundry API responses
@@ -50,11 +51,12 @@ async function callFoundryAPI(
   options: RequestInit = {}
 ): Promise<unknown> {
   const url = `${FOUNDRY_BASE_URL}${endpoint}`;
+  const token = await getAuthToken();
 
   const response = await fetch(url, {
     ...options,
     headers: {
-      'Authorization': `Bearer ${FOUNDRY_TOKEN}`,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...options.headers,
     },
