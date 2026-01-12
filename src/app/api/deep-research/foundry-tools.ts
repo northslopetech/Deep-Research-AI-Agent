@@ -4,6 +4,18 @@
 
 import { searchOntologyObjects, listObjectTypes as listOntologyObjectTypes } from '@/lib/foundry-client';
 
+// Logging helper with timestamps
+function log(source: string, message: string, data?: unknown) {
+    const timestamp = new Date().toISOString();
+    const prefix = `[${timestamp}] [SEARCH:${source}]`;
+    if (data !== undefined) {
+        const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
+        console.log(`${prefix} ${message}`, dataStr.substring(0, 1000) + (dataStr.length > 1000 ? '...(truncated)' : ''));
+    } else {
+        console.log(`${prefix} ${message}`);
+    }
+}
+
 /**
  * Call a Foundry Ontology Query function via HTTP
  * Uses service user token (FOUNDRY_TOKEN) for authentication.
@@ -29,8 +41,10 @@ async function callFoundryFunction(
 
   // Use Ontology Query endpoint format with API name (not full RID)
   const functionUrl = `${url}/api/v2/ontologies/${ontologyApiName}/queries/${functionName}/execute`;
-  console.log(`[Foundry] Calling: ${functionUrl}`);
+  log('FOUNDRY_API', `Calling: ${functionUrl}`);
+  log('FOUNDRY_API', `Parameters:`, parameters);
 
+  const startTime = Date.now();
   const response = await fetch(functionUrl, {
     method: "POST",
     headers: {
@@ -40,8 +54,11 @@ async function callFoundryFunction(
     body: JSON.stringify({ parameters }),
   });
 
+  log('FOUNDRY_API', `Response received in ${Date.now() - startTime}ms - Status: ${response.status}`);
+
   if (!response.ok) {
     const errorText = await response.text();
+    log('FOUNDRY_API', `ERROR: ${errorText}`);
     throw new Error(`HTTP ${response.status}: ${errorText}`);
   }
 
@@ -57,28 +74,29 @@ async function callFoundryFunction(
  */
 export async function webSearch(query: string): Promise<string> {
   const functionName = process.env.FOUNDRY_WEB_SEARCH_FUNCTION_NAME || "searchWebBatch";
+  const startTime = Date.now();
 
-  // Debug logging
-  console.log("[DEBUG] FOUNDRY_WEB_SEARCH_FUNCTION_NAME:", functionName);
-  console.log("[DEBUG] All FOUNDRY_ env vars:", Object.keys(process.env).filter(k => k.startsWith('FOUNDRY_')).map(k => `${k}=${process.env[k]?.substring(0, 20)}...`));
+  log('WEB', `========== WEB SEARCH START ==========`);
+  log('WEB', `Query: "${query}"`);
+  log('WEB', `Function: ${functionName}`);
 
   try {
-    console.log(`[Foundry] Calling web search function: ${functionName} with query: ${query}`);
-
     // Function expects queries as an array: { queries: string[] }
     const result = await callFoundryFunction(functionName, { queries: [query] });
-    
+    log('WEB', `Raw result received in ${Date.now() - startTime}ms`);
+
     // The function returns a JSON string, which may be wrapped in a "value" field for ontology queries
     // Handle ontology query response format (wrapped in "value" field)
     let resultString: string;
     if (typeof result === 'object' && result !== null && 'value' in result) {
       resultString = (result as { value: string }).value;
+      log('WEB', `Unwrapped result from 'value' field`);
     } else if (typeof result === 'string') {
       resultString = result;
     } else {
       resultString = JSON.stringify(result);
     }
-    
+
     // Parse the JSON string
     const parsedResult: {
       success?: boolean;
@@ -92,18 +110,23 @@ export async function webSearch(query: string): Promise<string> {
       error?: string;
       details?: string;
     } = JSON.parse(resultString);
-    
+
+    log('WEB', `Parsed result - success: ${parsedResult.success}, searchResults: ${parsedResult.searchResults?.length || 0}`);
+
     // Extract results from the first search result (since we only sent one query)
     if (parsedResult.searchResults && parsedResult.searchResults.length > 0) {
       const firstResult = parsedResult.searchResults[0];
-      
+      log('WEB', `First result - success: ${firstResult.success}, results: ${firstResult.results?.length || 0}`);
+
       if (firstResult.success && firstResult.results && firstResult.results.length > 0) {
+        log('WEB', `SUCCESS - Found ${firstResult.results.length} web results in ${Date.now() - startTime}ms`);
         // Return the results in the expected format
         return JSON.stringify({
           success: true,
           results: firstResult.results,
         }).slice(0, 15000);
       } else if (firstResult.error) {
+        log('WEB', `ERROR from function: ${firstResult.error}`);
         // Return error from the function
         return JSON.stringify({
           error: firstResult.error,
@@ -111,20 +134,22 @@ export async function webSearch(query: string): Promise<string> {
         }).slice(0, 15000);
       }
     }
-    
+
     // If we get here, something unexpected happened
     if (parsedResult.error) {
+      log('WEB', `ERROR in parsed result: ${parsedResult.error}`);
       return JSON.stringify({
         error: parsedResult.error,
         details: parsedResult.details,
         query,
       }).slice(0, 15000);
     }
-    
+
+    log('WEB', `No results found, returning full response`);
     // Fallback: return the full response
     return JSON.stringify(parsedResult).slice(0, 15000);
   } catch (error) {
-    console.error(`[Foundry] Web search error:`, error);
+    log('WEB', `EXCEPTION: ${error instanceof Error ? error.message : String(error)}`);
     // Return error information in a structured format
     return JSON.stringify({
       error: "Foundry function call failed",
@@ -142,20 +167,27 @@ export async function webSearch(query: string): Promise<string> {
  * @param objectTypes - Optional array of object type API names to search (if provided, only these types are searched)
  */
 export async function ontologySearch(query: string, objectTypes?: string[]): Promise<string> {
-  try {
-    const hasSpecificTypes = objectTypes && objectTypes.length > 0;
-    console.log(`[LIVE] Ontology search for: ${query}${hasSpecificTypes ? ` (types: ${objectTypes.join(', ')})` : ' (auto-discover)'}`);
+  const startTime = Date.now();
+  const hasSpecificTypes = objectTypes && objectTypes.length > 0;
 
+  log('ONTOLOGY', `========== ONTOLOGY SEARCH START ==========`);
+  log('ONTOLOGY', `Query: "${query}"`);
+  log('ONTOLOGY', `Object types: ${hasSpecificTypes ? objectTypes.join(', ') : 'auto-discover'}`);
+
+  try {
     // Call the Foundry Ontology API
     // If objectTypes are provided, search only those types; otherwise auto-discover
+    log('ONTOLOGY', `Calling searchOntologyObjects...`);
     const response = await searchOntologyObjects(query, {
       maxResults: 10,
       objectTypes: hasSpecificTypes ? objectTypes : undefined,
       autoDiscover: !hasSpecificTypes, // Only auto-discover if no specific types provided
     });
+    log('ONTOLOGY', `Response received in ${Date.now() - startTime}ms`);
 
     // Check if ontology search is configured
     if (response.message === 'Ontology search not configured') {
+      log('ONTOLOGY', `NOT CONFIGURED - FOUNDRY_ONTOLOGY_RID not set`);
       return `[INTERNAL DATA - Not Configured]
 Ontology search is not configured. Set FOUNDRY_ONTOLOGY_RID environment variable to enable internal data search.`;
     }
@@ -172,15 +204,23 @@ Ontology search is not configured. Set FOUNDRY_ONTOLOGY_RID environment variable
       hasMore: !!response.nextPageToken,
     };
 
+    log('ONTOLOGY', `SUCCESS - Found ${formattedResults.totalCount} results in ${Date.now() - startTime}ms`);
+    log('ONTOLOGY', `Searched types: ${formattedResults.searchedTypes.join(', ') || 'none'}`);
+    log('ONTOLOGY', `Results returned: ${formattedResults.results.length}`);
+
     // Truncate to stay within context limits (as per CLAUDE.md)
     const jsonString = JSON.stringify(formattedResults, null, 2);
     const truncated = jsonString.slice(0, 15000);
+
+    if (jsonString.length > 15000) {
+      log('ONTOLOGY', `Result truncated from ${jsonString.length} to 15000 characters`);
+    }
 
     return `[INTERNAL DATA - Foundry Ontology]\n${truncated}${
       jsonString.length > 15000 ? '\n...(truncated)' : ''
     }`;
   } catch (error) {
-    console.error('Error querying Foundry Ontology:', error);
+    log('ONTOLOGY', `EXCEPTION: ${error instanceof Error ? error.message : String(error)}`);
 
     // Fallback to a helpful error message
     return `[INTERNAL DATA - Error]
