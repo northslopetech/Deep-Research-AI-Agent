@@ -2,21 +2,14 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Deep Research AI Agent API",
-    "description": "API for conducting comprehensive research using AI agents with dual-source search (Web + Ontology)",
+    "description": "API for conducting comprehensive research using AI agents",
     "version": "1.0.0"
   },
-  "servers": [
-    {
-      "url": "http://localhost:3000",
-      "description": "Local development server"
-    }
-  ],
   "paths": {
     "/api/generate-questions": {
       "post": {
         "operationId": "generateQuestions",
         "summary": "Generate clarifying questions for a research topic",
-        "description": "Given a research topic, generates 2-4 clarifying questions to help narrow down the research scope and identify specific aspects of interest.",
         "requestBody": {
           "required": true,
           "content": {
@@ -29,7 +22,9 @@
                     "description": "The research topic to generate questions for"
                   }
                 },
-                "required": ["topic"]
+                "required": [
+                  "topic"
+                ]
               }
             }
           }
@@ -43,18 +38,7 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  },
-                  "description": "Array of clarifying questions"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error generating questions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  }
                 }
               }
             }
@@ -66,7 +50,6 @@
       "post": {
         "operationId": "runDeepResearch",
         "summary": "Run deep research on a topic",
-        "description": "Executes comprehensive research on the given topic using AI agents. Searches both internal Ontology data and external web sources, then generates a detailed markdown report.",
         "requestBody": {
           "required": true,
           "content": {
@@ -84,20 +67,22 @@
                       "type": "object",
                       "properties": {
                         "question": {
-                          "type": "string",
-                          "description": "The clarifying question"
+                          "type": "string"
                         },
                         "answer": {
-                          "type": "string",
-                          "description": "The user's answer to the question"
+                          "type": "string"
                         }
                       },
-                      "required": ["question", "answer"]
-                    },
-                    "description": "Array of clarification question-answer pairs"
+                      "required": [
+                        "question",
+                        "answer"
+                      ]
+                    }
                   }
                 },
-                "required": ["topic"]
+                "required": [
+                  "topic"
+                ]
               }
             }
           }
@@ -108,27 +93,43 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResearchResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request parameters",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResearchResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResearchResponse"
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "report": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "activities": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "timestamp": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
                 }
               }
             }
@@ -137,88 +138,9 @@
       }
     }
   },
-  "components": {
-    "schemas": {
-      "ErrorResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "example": false
-          },
-          "error": {
-            "type": "string",
-            "description": "Error message"
-          }
-        },
-        "required": ["success", "error"]
-      },
-      "Activity": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["search", "extract", "analyze", "generate", "planning"],
-            "description": "Type of activity"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["pending", "complete", "warning", "error"],
-            "description": "Status of the activity"
-          },
-          "message": {
-            "type": "string",
-            "description": "Human-readable message about the activity"
-          },
-          "timestamp": {
-            "type": "integer",
-            "description": "Unix timestamp in milliseconds"
-          },
-          "completedSteps": {
-            "type": "integer",
-            "description": "Number of completed steps so far"
-          },
-          "tokenUsed": {
-            "type": "integer",
-            "description": "Total tokens used so far"
-          }
-        },
-        "required": ["type", "status", "message", "timestamp", "completedSteps", "tokenUsed"]
-      },
-      "ResearchResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "description": "Whether the research completed successfully"
-          },
-          "report": {
-            "type": "string",
-            "nullable": true,
-            "description": "The final research report in markdown format"
-          },
-          "activities": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Activity"
-            },
-            "description": "List of activities performed during research"
-          },
-          "error": {
-            "type": "string",
-            "description": "Error message if research failed"
-          },
-          "tokenUsed": {
-            "type": "integer",
-            "description": "Total tokens consumed during research"
-          },
-          "completedSteps": {
-            "type": "integer",
-            "description": "Total number of steps completed"
-          }
-        },
-        "required": ["success", "report", "activities"]
-      }
+  "servers": [
+    {
+      "url": "http://localhost:3000"
     }
-  }
+  ]
 }

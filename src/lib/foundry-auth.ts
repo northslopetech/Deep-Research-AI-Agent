@@ -7,6 +7,17 @@
  *    injected by Foundry to fetch a token via OAuth2
  */
 
+// Logger that won't be stripped
+const log = (message: string, data?: unknown) => {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] [foundry-auth] ${message}`;
+  if (data !== undefined) {
+    console.info(logMessage, typeof data === 'string' ? data : JSON.stringify(data));
+  } else {
+    console.info(logMessage);
+  }
+};
+
 interface TokenCache {
   token: string;
   expiresAt: number;
@@ -26,14 +37,18 @@ const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
  *    use OAuth2 client credentials flow to obtain a token
  */
 export async function getAuthToken(): Promise<string> {
+  log("getAuthToken called");
+
   // Check for static token first (local development)
   const staticToken = process.env.FOUNDRY_TOKEN;
   if (staticToken) {
+    log("Using static FOUNDRY_TOKEN", { tokenLength: staticToken.length });
     return staticToken;
   }
 
   // Check for cached token
   if (tokenCache && tokenCache.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) {
+    log("Using cached token", { expiresAt: new Date(tokenCache.expiresAt).toISOString() });
     return tokenCache.token;
   }
 
@@ -42,18 +57,27 @@ export async function getAuthToken(): Promise<string> {
   const clientSecret = process.env.CLIENT_SECRET;
   const baseUrl = process.env.FOUNDRY_BASE_URL;
 
+  log("Checking OAuth credentials", {
+    hasClientId: !!clientId,
+    hasClientSecret: !!clientSecret,
+    hasBaseUrl: !!baseUrl,
+    baseUrl: baseUrl || "NOT SET",
+  });
+
   if (!clientId || !clientSecret) {
-    throw new Error(
-      'Authentication failed: Neither FOUNDRY_TOKEN nor CLIENT_ID/CLIENT_SECRET are set. ' +
-      'Set FOUNDRY_TOKEN for local development or ensure CLIENT_ID/CLIENT_SECRET are injected by Foundry.'
-    );
+    const error = 'Authentication failed: Neither FOUNDRY_TOKEN nor CLIENT_ID/CLIENT_SECRET are set.';
+    log("ERROR: " + error);
+    throw new Error(error);
   }
 
   if (!baseUrl) {
-    throw new Error('FOUNDRY_BASE_URL is required for authentication');
+    const error = 'FOUNDRY_BASE_URL is required for authentication';
+    log("ERROR: " + error);
+    throw new Error(error);
   }
 
   const tokenUrl = `${baseUrl}/multipass/api/oauth2/token`;
+  log("Fetching OAuth token", { tokenUrl });
 
   try {
     const response = await fetch(tokenUrl, {
@@ -68,32 +92,41 @@ export async function getAuthToken(): Promise<string> {
       }),
     });
 
+    log("OAuth response received", { status: response.status, ok: response.ok });
+
     if (!response.ok) {
       const errorText = await response.text();
+      log("OAuth request failed", { status: response.status, errorText });
       throw new Error(
         `OAuth token request failed (${response.status}): ${errorText}`
       );
     }
 
     const tokenData = await response.json();
+    log("OAuth token data received", {
+      hasAccessToken: !!tokenData.access_token,
+      expiresIn: tokenData.expires_in,
+    });
 
     if (!tokenData.access_token) {
       throw new Error('OAuth response missing access_token');
     }
 
     // Cache the token
-    // expires_in is in seconds, default to 1 hour if not provided
     const expiresInMs = (tokenData.expires_in || 3600) * 1000;
     tokenCache = {
       token: tokenData.access_token,
       expiresAt: Date.now() + expiresInMs,
     };
 
-    console.log('[foundry-auth] Successfully obtained OAuth token');
+    log("OAuth token cached successfully", {
+      tokenLength: tokenCache.token.length,
+      expiresAt: new Date(tokenCache.expiresAt).toISOString(),
+    });
     return tokenCache.token;
 
-  } catch (error) {
-    console.error('[foundry-auth] Failed to obtain OAuth token:', error);
+  } catch (error: any) {
+    log("ERROR in OAuth flow", { message: error?.message, stack: error?.stack });
     throw error;
   }
 }

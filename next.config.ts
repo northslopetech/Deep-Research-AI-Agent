@@ -5,9 +5,11 @@ const nextConfig: NextConfig = {
   // This creates a self-contained build in .next/standalone
   output: "standalone",
 
+  // Keep console.info for logging (only remove console.log/debug in prod)
   compiler: {
-    // Remove console logs in production
-    removeConsole: process.env.NODE_ENV === "production" ? true : false,
+    removeConsole: process.env.NODE_ENV === "production"
+      ? { exclude: ["info", "warn", "error"] }
+      : false,
   },
 };
 
