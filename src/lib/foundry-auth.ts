@@ -125,8 +125,9 @@ export async function getAuthToken(): Promise<string> {
     });
     return tokenCache.token;
 
-  } catch (error: any) {
-    log("ERROR in OAuth flow", { message: error?.message, stack: error?.stack });
+  } catch (error) {
+    const err = error as Error;
+    log("ERROR in OAuth flow", { message: err?.message, stack: err?.stack });
     throw error;
   }
 }
