@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.109",
-    "@deep-research-service-user/sdk": "^0.1.0",
     "@hookform/resolvers": "^4.1.3",
     "@northslopetech/foundry-ai-sdk": "^0.2.0",
     "@opentelemetry/api": "^1.9.0",

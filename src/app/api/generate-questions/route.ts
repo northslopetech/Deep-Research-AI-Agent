@@ -1,11 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { generateText, tool } from "ai";
-import { foundry } from "@/lib/foundry-provider";
+import { getFoundryProvider } from "@/lib/foundry-provider";
 import { z } from "zod";
 
-// Type assertion needed due to AI SDK LanguageModelV1 vs V2 mismatch
-const getModel = (modelId: string) => foundry(modelId) as any;
+// Simple logger that won't be stripped in production
+const log = (message: string, data?: any) => {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] [generate-questions] ${message}`;
+  if (data !== undefined) {
+    console.info(logMessage, JSON.stringify(data, null, 2));
+  } else {
+    console.info(logMessage);
+  }
+};
 
 const questionsSchema = z.object({
   questions: z.array(z.string()),
@@ -23,6 +31,8 @@ const questionsJsonSchema = {
 };
 
 const clarifyResearchGoals = async (topic: string) => {
+  log("clarifyResearchGoals called", { topic });
+
   const prompt = `Given the research topic "${topic}", generate 2-4 clarifying questions to help narrow down the research scope. Focus on identifying:
 - Specific aspects of interest
 - Required depth/complexity level
@@ -31,50 +41,88 @@ const clarifyResearchGoals = async (topic: string) => {
 IMPORTANT: You must respond ONLY by calling the 'submit_result' tool with your answer.`;
 
   try {
+    log("Getting Foundry provider...");
+    const foundry = await getFoundryProvider();
+    log("Foundry provider obtained");
+
+    const model = foundry("GPT_4o") as any;
+    log("Model created: GPT_4o");
+
+    log("Calling generateText...");
     const result = await generateText({
-      model: getModel("GPT_5"),
+      model,
       prompt,
       tools: {
         submit_result: tool({
           description: "Submit the generated clarifying questions",
-          inputSchema: questionsSchema,  // AI SDK v5: parameters -> inputSchema
+          parameters: questionsSchema,
           providerOptions: {
             foundry: { parameters: questionsJsonSchema },
           },
-          // Execute is required for the SDK to properly detect and send tools
-          execute: async (args) => args,
+          execute: async (args) => {
+            log("Tool execute called", args);
+            return args;
+          },
         }),
       },
-      maxOutputTokens: 4000,  // AI SDK v5: maxTokens -> maxOutputTokens
+      maxTokens: 4000,
     });
 
-    // AI SDK v5 uses .input
+    log("generateText completed", {
+      hasToolCalls: !!result.toolCalls?.length,
+      toolCallCount: result.toolCalls?.length || 0,
+      text: result.text?.substring(0, 200),
+    });
+
     const toolCall = result.toolCalls?.[0];
     if (toolCall) {
-      const input = toolCall.input as { questions?: string[] };
-      return input?.questions || [];
+      log("Tool call found", { toolName: toolCall.toolName, args: toolCall.args });
+      const args = toolCall.args as { questions?: string[] };
+      const questions = args?.questions || [];
+      log("Extracted questions", { count: questions.length, questions });
+      return questions;
     }
 
+    log("No tool call in response");
     return [];
-  } catch (error) {
-    console.log("Error while generating questions: ", error);
-    return [];
+  } catch (error: any) {
+    log("ERROR in clarifyResearchGoals", {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+    });
+    throw error; // Re-throw to be caught by POST handler
   }
 };
 
 export async function POST(req: Request) {
-  const { topic } = await req.json();
-  console.log("Topic: ", topic);
+  log("POST request received");
 
   try {
+    const body = await req.json();
+    log("Request body parsed", body);
+
+    const { topic } = body;
+    if (!topic) {
+      log("ERROR: No topic provided");
+      return NextResponse.json(
+        { success: false, error: "Topic is required" },
+        { status: 400 }
+      );
+    }
+
+    log("Starting clarifyResearchGoals", { topic });
     const questions = await clarifyResearchGoals(topic);
-    console.log("Questions: ", questions);
+    log("clarifyResearchGoals completed", { questionCount: questions.length });
 
     return NextResponse.json(questions);
-  } catch (error) {
-    console.error("Error while generating questions: ", error);
+  } catch (error: any) {
+    log("ERROR in POST handler", {
+      message: error?.message,
+      stack: error?.stack,
+    });
     return NextResponse.json(
-      { success: false, error: "Failed to generate questions" },
+      { success: false, error: error?.message || "Failed to generate questions" },
       { status: 500 }
     );
   }
