@@ -55,7 +55,7 @@ IMPORTANT: You must respond ONLY by calling the 'submit_result' tool with your a
       tools: {
         submit_result: tool({
           description: "Submit the generated clarifying questions",
-          parameters: questionsSchema,
+          inputSchema: questionsSchema as any, // AI SDK v5: parameters -> inputSchema
           providerOptions: {
             foundry: { parameters: questionsJsonSchema },
           },
@@ -65,7 +65,7 @@ IMPORTANT: You must respond ONLY by calling the 'submit_result' tool with your a
           },
         }),
       },
-      maxTokens: 4000,
+      maxOutputTokens: 4000, // AI SDK v5: maxTokens -> maxOutputTokens
     });
 
     log("generateText completed", {
@@ -76,9 +76,10 @@ IMPORTANT: You must respond ONLY by calling the 'submit_result' tool with your a
 
     const toolCall = result.toolCalls?.[0];
     if (toolCall) {
-      log("Tool call found", { toolName: toolCall.toolName, args: toolCall.args });
-      const args = toolCall.args as { questions?: string[] };
-      const questions = args?.questions || [];
+      // AI SDK v5 uses .input instead of .args
+      const toolArgs = toolCall.input as { questions?: string[] };
+      log("Tool call found", { toolName: toolCall.toolName, args: toolArgs });
+      const questions = toolArgs?.questions || [];
       log("Extracted questions", { count: questions.length, questions });
       return questions;
     }
