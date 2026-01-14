@@ -15,7 +15,8 @@ export interface ResearchState {
     clerificationsText: string,
     objectTypes?: string[], // Optional array of object type API names to search in Ontology
     sessionId?: string, // Unique session ID for tracking in Foundry Ontology
-    currentUser?: string // User performing the research (for Session object)
+    currentUser?: string, // User performing the research (for Session object)
+    skipStartedEvent?: boolean // Skip STARTED event if already created externally (for async mode)
 }
 
 export interface ModelCallOptions<T>{

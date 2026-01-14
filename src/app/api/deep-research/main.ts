@@ -28,7 +28,7 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
     log('INIT', `Object Types Filter: ${researchState.objectTypes?.join(', ') || 'none (auto-discover)'}`);
     log('INIT', `Max iterations: ${MAX_ITERATIONS}`);
 
-    // Generate unique session ID for tracking
+    // Generate unique session ID for tracking (use existing if pre-assigned)
     if (!researchState.sessionId) {
         researchState.sessionId = generateSessionId();
         researchState.currentUser = researchState.currentUser || 'system'; // Default user if not provided
@@ -36,11 +36,15 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
     log('INIT', `Session ID: ${researchState.sessionId}`);
     log('INIT', `Current User: ${researchState.currentUser}`);
 
-    // Create initial Session Event - Research Started
-    try {
-        await SessionEvents.started(researchState.sessionId, researchState.topic);
-    } catch (error) {
-        log('INIT', `⚠️ Failed to create initial session event (continuing anyway): ${error}`);
+    // Create initial Session Event - Research Started (unless already created externally)
+    if (!researchState.skipStartedEvent) {
+        try {
+            await SessionEvents.started(researchState.sessionId, researchState.topic);
+        } catch (error) {
+            log('INIT', `⚠️ Failed to create initial session event (continuing anyway): ${error}`);
+        }
+    } else {
+        log('INIT', 'Skipping STARTED event (already created externally)');
     }
 
     let iteration = 0;

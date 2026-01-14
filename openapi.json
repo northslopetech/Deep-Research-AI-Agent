@@ -49,7 +49,8 @@
     "/api/foundry/research": {
       "post": {
         "operationId": "runDeepResearch",
-        "summary": "Run deep research on a topic",
+        "summary": "Run deep research on a topic (synchronous)",
+        "description": "Runs research synchronously and waits for completion. Returns the full report and activities.",
         "requestBody": {
           "required": true,
           "content": {
@@ -129,6 +130,79 @@
                   },
                   "required": [
                     "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/foundry/research/async": {
+      "post": {
+        "operationId": "runDeepResearchAsync",
+        "summary": "Start deep research asynchronously (returns session ID immediately)",
+        "description": "Kicks off research in the background and returns immediately with a session ID. Track progress by querying SessionEvent objects filtered by sessionId.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "topic": {
+                    "type": "string",
+                    "description": "The research topic or question to investigate"
+                  },
+                  "clarifications": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "question": {
+                          "type": "string"
+                        },
+                        "answer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "question",
+                        "answer"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "topic"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Research started successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "description": "Unique ID to track research progress via SessionEvent objects"
+                    },
+                    "error": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "sessionId"
                   ]
                 }
               }
