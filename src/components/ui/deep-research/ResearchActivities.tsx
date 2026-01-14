@@ -16,7 +16,7 @@ const ResearchActivities = () => {
 const {activities, sources} = useDeepResearchStore();
 const [isOpen, setIsOpen] = useState(true)
 
-if (activities.length === 0) return;
+if (activities.length === 0) return null;
 
   return (
     <div className='w-[90vw] sm:w-[400px] fixed top-4 right-4 z-20'>

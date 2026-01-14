@@ -3,6 +3,11 @@ import { createActivityTracker } from "./activity-tracker";
 import { MAX_ITERATIONS } from "./constants";
 import { analyzeFindings, generateReport, generateSearchQueries, processSearchResults, search } from "./research-functions";
 import { ResearchState } from "./types";
+import { 
+  generateSessionId, 
+  createSessionObject, 
+  SessionEvents 
+} from "./session-tracker";
 
 // Logging helper with timestamps
 function log(stage: string, message: string, data?: unknown) {
@@ -23,6 +28,21 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
     log('INIT', `Object Types Filter: ${researchState.objectTypes?.join(', ') || 'none (auto-discover)'}`);
     log('INIT', `Max iterations: ${MAX_ITERATIONS}`);
 
+    // Generate unique session ID for tracking
+    if (!researchState.sessionId) {
+        researchState.sessionId = generateSessionId();
+        researchState.currentUser = researchState.currentUser || 'system'; // Default user if not provided
+    }
+    log('INIT', `Session ID: ${researchState.sessionId}`);
+    log('INIT', `Current User: ${researchState.currentUser}`);
+
+    // Create initial Session Event - Research Started
+    try {
+        await SessionEvents.started(researchState.sessionId, researchState.topic);
+    } catch (error) {
+        log('INIT', `⚠️ Failed to create initial session event (continuing anyway): ${error}`);
+    }
+
     let iteration = 0;
 
     const activityTracker = createActivityTracker(dataStream, researchState);
@@ -32,6 +52,16 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
     const initialQueries = await generateSearchQueries(researchState, activityTracker)
     log('PLANNING', `Planning completed in ${Date.now() - planningStart}ms`);
     log('PLANNING', 'Initial queries:', (initialQueries as any).searchQueries);
+
+    // Create Session Event - Planning Completed
+    try {
+        await SessionEvents.planningCompleted(
+            researchState.sessionId!,
+            (initialQueries as any).searchQueries?.length || 0
+        );
+    } catch (error) {
+        log('PLANNING', `⚠️ Failed to create planning event: ${error}`);
+    }
 
     let currentQueries = (initialQueries as any).searchQueries
 
@@ -44,6 +74,17 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
         currentQueries.forEach((q: { query: string; source: string }, i: number) => {
             log('ITERATION', `  [${i + 1}] ${q.source.toUpperCase()}: "${q.query}"`);
         });
+
+        // Create Session Event - Iteration Started
+        try {
+            await SessionEvents.iterationStarted(
+                researchState.sessionId!,
+                iteration,
+                currentQueries.length
+            );
+        } catch (error) {
+            log('ITERATION', `⚠️ Failed to create iteration started event: ${error}`);
+        }
 
         // Execute searches
         log('SEARCH', `Executing ${currentQueries.length} parallel searches...`);
@@ -68,6 +109,17 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
 
         log('SEARCH', `Total search results to process: ${allSearchResults.length}`);
 
+        // Create Session Event - Search Completed
+        try {
+            await SessionEvents.searchCompleted(
+                researchState.sessionId!,
+                iteration,
+                allSearchResults.length
+            );
+        } catch (error) {
+            log('SEARCH', `⚠️ Failed to create search completed event: ${error}`);
+        }
+
         // Process/Extract content
         log('EXTRACT', `Processing ${allSearchResults.length} search results...`);
         const extractStart = Date.now();
@@ -79,6 +131,17 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
 
         researchState.findings = [...researchState.findings, ...newFindings]
         log('EXTRACT', `Total findings accumulated: ${researchState.findings.length}`);
+
+        // Create Session Event - Extraction Completed
+        try {
+            await SessionEvents.extractionCompleted(
+                researchState.sessionId!,
+                iteration,
+                newFindings.length
+            );
+        } catch (error) {
+            log('EXTRACT', `⚠️ Failed to create extraction completed event: ${error}`);
+        }
 
         // Analyze findings
         log('ANALYZE', 'Analyzing findings to determine if more research needed...');
@@ -96,6 +159,18 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
             log('ANALYZE', 'Gaps:', (analysis as any).gaps);
         }
         log('ANALYZE', `Follow-up queries suggested: ${(analysis as any).queries?.length || 0}`);
+
+        // Create Session Event - Analysis Completed
+        try {
+            await SessionEvents.analysisCompleted(
+                researchState.sessionId!,
+                iteration,
+                (analysis as any).sufficient,
+                (analysis as any).gaps?.length || 0
+            );
+        } catch (error) {
+            log('ANALYZE', `⚠️ Failed to create analysis completed event: ${error}`);
+        }
 
         if((analysis as any).sufficient){
             log('ANALYZE', 'Content is SUFFICIENT - exiting research loop');
@@ -119,12 +194,41 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
     log('LOOP_END', `Total findings: ${researchState.findings.length}`);
     log('LOOP_END', `Total tokens used: ${researchState.tokenUsed}`);
 
+    // Create Session Event - Research Loop Completed
+    try {
+        await SessionEvents.loopCompleted(
+            researchState.sessionId!,
+            iteration,
+            researchState.findings.length
+        );
+    } catch (error) {
+        log('LOOP_END', `⚠️ Failed to create loop completed event: ${error}`);
+    }
+
     // Generate report
     log('REPORT', 'Generating final report...');
+    
+    // Create Session Event - Report Generation Started
+    try {
+        await SessionEvents.reportStarted(researchState.sessionId!);
+    } catch (error) {
+        log('REPORT', `⚠️ Failed to create report started event: ${error}`);
+    }
+    
     const reportStart = Date.now();
     const report = await generateReport(researchState, activityTracker);
     log('REPORT', `Report generated in ${Date.now() - reportStart}ms`);
     log('REPORT', `Report length: ${typeof report === 'string' ? report.length : 'N/A'} characters`);
+
+    // Create Session Event - Report Generation Completed
+    try {
+        await SessionEvents.reportCompleted(
+            researchState.sessionId!,
+            typeof report === 'string' ? report.length : 0
+        );
+    } catch (error) {
+        log('REPORT', `⚠️ Failed to create report completed event: ${error}`);
+    }
 
     dataStream.writeData({
         type: "report",
@@ -135,6 +239,31 @@ export async function deepResearch(researchState: ResearchState, dataStream: any
     log('COMPLETE', '========== DEEP RESEARCH COMPLETED ==========');
     log('COMPLETE', `Total execution time: ${totalTime}ms (${(totalTime / 1000).toFixed(2)}s)`);
     log('COMPLETE', `Final stats: ${researchState.completedSteps} steps, ${researchState.tokenUsed} tokens, ${researchState.findings.length} findings`);
+
+    // Create Session Event - Session Completed
+    try {
+        await SessionEvents.completed(
+            researchState.sessionId!,
+            totalTime,
+            researchState.tokenUsed
+        );
+    } catch (error) {
+        log('COMPLETE', `⚠️ Failed to create session completed event: ${error}`);
+    }
+
+    // Create final Session object with the complete report
+    try {
+        const title = `Research: ${researchState.topic.substring(0, 100)}${researchState.topic.length > 100 ? '...' : ''}`;
+        await createSessionObject(
+            researchState.sessionId!,
+            researchState.currentUser || 'system',
+            researchState.topic,
+            title,
+            typeof report === 'string' ? report : JSON.stringify(report)
+        );
+    } catch (error) {
+        log('COMPLETE', `⚠️ Failed to create final session object: ${error}`);
+    }
 
     return initialQueries;
 

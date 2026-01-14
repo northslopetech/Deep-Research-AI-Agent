@@ -11,10 +11,12 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install dependencies using pnpm
-COPY package.json pnpm-lock.yaml* ./
+# Copy package files AND .npmrc for private registry access
+COPY package.json pnpm-lock.yaml* .npmrc ./
+
+# Install dependencies using pnpm with Foundry token for private packages
 RUN --mount=type=secret,id=FOUNDRY_TOKEN \
-    FOUNDRY_TOKEN=$(cat /run/secrets/FOUNDRY_TOKEN 2>/dev/null || echo "") \
+    export FOUNDRY_TOKEN=$(cat /run/secrets/FOUNDRY_TOKEN 2>/dev/null || echo "") && \
     pnpm install --frozen-lockfile || pnpm install
 
 # Rebuild the source code only when needed
@@ -24,8 +26,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build the Next.js application
+# Remove .npmrc during build to avoid token substitution warnings (dependencies already installed)
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm run build
+RUN rm -f .npmrc && pnpm run build
 
 # Production image
 FROM base AS runner

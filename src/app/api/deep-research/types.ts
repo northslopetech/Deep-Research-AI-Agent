@@ -13,7 +13,9 @@ export interface ResearchState {
     findings: ResearchFindings[],
     processedUrl: Set<string>,
     clerificationsText: string,
-    objectTypes?: string[] // Optional array of object type API names to search in Ontology
+    objectTypes?: string[], // Optional array of object type API names to search in Ontology
+    sessionId?: string, // Unique session ID for tracking in Foundry Ontology
+    currentUser?: string // User performing the research (for Session object)
 }
 
 export interface ModelCallOptions<T>{

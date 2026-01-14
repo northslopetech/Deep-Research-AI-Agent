@@ -35,6 +35,11 @@ const QnA = () => {
 
   const isLoading = status === "streaming" || status === "submitted";
 
+  // Ensure UI shows loading immediately when the stream starts (not only after first data part arrives)
+  useEffect(() => {
+    setIsLoading(isLoading);
+  }, [isLoading, setIsLoading]);
+
   // Extract data from messages - AI SDK v5 uses message parts for custom data
   useEffect(() => {
     const allData: unknown[] = [];
@@ -85,8 +90,6 @@ const QnA = () => {
         ? (reportData as any).content
         : "";
     setReport(report);
-
-    setIsLoading(isLoading);
   }, [streamData, setActivities, setSources, setReport, setIsLoading, isLoading]);
 
   // Start research when questions are completed

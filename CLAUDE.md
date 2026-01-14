@@ -201,10 +201,44 @@ Foundry Ontology results are massive. **Always truncate** tool outputs:
 return JSON.stringify(result).slice(0, 15000);
 ```
 
+## Session Tracking
+
+The Deep Research Agent now tracks all research sessions and their progress in Foundry Ontology:
+
+- **Session Objects** (`[T11] Session`) - Created at the end with complete report
+- **Session Events** (`[DeepResearch] Session Event`) - Created at important milestones
+
+### Integration Points
+
+Session tracking in `src/app/api/deep-research/`:
+
+| File | Purpose |
+|------|---------|
+| `session-tracker.ts` | Session & Session Event creation via OSDK |
+| `main.ts` | Integrated at all research milestones |
+| `route.ts` | Error handling for failed sessions |
+| `types.ts` | Added `sessionId` and `currentUser` to `ResearchState` |
+
+### Session Events Created
+
+1. `STARTED` - Research begins
+2. `PLANNING_COMPLETE` - Initial queries generated
+3. `ITERATION_STARTED` - Each search iteration begins
+4. `SEARCH_COMPLETE` - Search results retrieved
+5. `EXTRACTION_COMPLETE` - Content extracted from results
+6. `ANALYSIS_COMPLETE` - Analysis determines if more research needed
+7. `LOOP_COMPLETE` - Research loop ends
+8. `REPORT_STARTED` - Report generation begins
+9. `REPORT_COMPLETE` - Report generated
+10. `COMPLETED` - Session finishes successfully
+11. `FAILED` - Error occurred (with error message)
+
+See `docs/SESSION_TRACKING.md` for complete documentation.
+
 ## State Management
 
 - `src/store/deepResearch.ts` - Zustand store for UI state
-- `ResearchState` type in `types.ts` tracks: topic, findings, token usage, completed steps
+- `ResearchState` type in `types.ts` tracks: topic, findings, token usage, completed steps, sessionId, currentUser
 
 ## UI Components
 

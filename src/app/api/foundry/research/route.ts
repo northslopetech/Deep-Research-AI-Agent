@@ -13,6 +13,7 @@ import { deepResearch } from '../../deep-research/main';
 import { ResearchState } from '../../deep-research/types';
 import { createBufferStream, ActivityContent } from '../../deep-research/adapter';
 import { ensureAuthenticated } from '@/lib/foundry-provider';
+import { resolveFoundryUserAsync } from '@/lib/foundry-user';
 
 interface Clarification {
   question: string;
@@ -68,6 +69,7 @@ export async function POST(req: Request): Promise<NextResponse<ResponseBody>> {
       findings: [],
       processedUrl: new Set(),
       clerificationsText: JSON.stringify(clarifications),
+      currentUser: await resolveFoundryUserAsync(req) || 'anonymous',
     };
 
     // Run the research synchronously (will buffer instead of stream)

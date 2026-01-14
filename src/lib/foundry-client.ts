@@ -4,6 +4,7 @@
  */
 
 import { getAuthToken, isAuthConfigured } from './foundry-auth';
+import { $ontologyRid } from '@gmahler-deep-research-service-user/sdk';
 
 const FOUNDRY_BASE_URL = process.env.FOUNDRY_BASE_URL;
 
@@ -89,7 +90,7 @@ async function callFoundryAPI(
  * Returns null if not configured (allows graceful fallback)
  */
 export async function getOntologyRid(): Promise<string | null> {
-  const configuredOntologyRid = process.env.FOUNDRY_ONTOLOGY_RID;
+  const configuredOntologyRid = process.env.FOUNDRY_ONTOLOGY_RID ?? process.env.ONTOLOGY_RID ?? $ontologyRid;
 
   if (configuredOntologyRid) {
     return configuredOntologyRid;
